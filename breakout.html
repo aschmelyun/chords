@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Breakoutesque</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a1e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Space Mono', monospace;
+    overflow: hidden;
+  }
+
+  .app {
+    display: flex;
+    gap: 0;
+    background: #2a2a2e;
+    border-radius: 12px;
+    box-shadow:
+      0 0 0 2px #3a3a3e,
+      0 20px 60px rgba(0,0,0,0.6),
+      0 0 120px rgba(100,100,255,0.05);
+    overflow: hidden;
+  }
+
+  .toolbar {
+    width: 52px;
+    background: #222226;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 6px;
+    gap: 4px;
+    border-right: 2px solid #3a3a3e;
+  }
+
+  .color-swatch {
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.15s, border-color 0.15s;
+    position: relative;
+  }
+
+  .color-swatch:hover { transform: scale(1.1); }
+  .color-swatch.active { border-color: #fff; transform: scale(1.12); }
+
+  .color-swatch .chord-label {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    font-size: 7px;
+    padding: 1px 3px;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .eraser {
+    background:
+      repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 50% / 12px 12px;
+  }
+
+  .separator {
+    width: 30px;
+    height: 2px;
+    background: #3a3a3e;
+    margin: 4px 0;
+  }
+
+  .canvas-wrap {
+    position: relative;
+    width: 640px;
+    height: 640px;
+    cursor: crosshair;
+  }
+
+  canvas {
+    display: block;
+    width: 640px;
+    height: 640px;
+  }
+
+  .controls {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    display: flex;
+    gap: 6px;
+  }
+
+  .btn {
+    background: rgba(0,0,0,0.6);
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+  .title-bar {
+    position: absolute;
+    top: -32px;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: #2a2a2e;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    border-bottom: 1px solid #3a3a3e;
+  }
+
+  .title-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .title-dot.r { background: #ff5f57; }
+  .title-dot.y { background: #ffbd2e; }
+  .title-dot.g { background: #28c840; }
+  .title-text {
+    color: #888;
+    font-size: 11px;
+    margin-left: 8px;
+  }
+
+  .outer-wrap {
+    padding-top: 32px;
+    position: relative;
+  }
+
+  .hint {
+    position: absolute;
+    bottom: -36px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #555;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<div class="outer-wrap">
+  <div class="title-bar">
+    <div class="title-dot r"></div>
+    <div class="title-dot y"></div>
+    <div class="title-dot g"></div>
+    <span class="title-text">breakoutesque</span>
+  </div>
+  <div class="app">
+    <div class="toolbar" id="toolbar"></div>
+    <div class="canvas-wrap">
+      <canvas id="grid" width="640" height="640"></canvas>
+      <div class="controls">
+        <button class="btn" id="clearBtn">Clear</button>
+        <button class="btn" id="playBtn">▶ Play</button>
+      </div>
+    </div>
+  </div>
+  <div class="hint">Paint with colors, then press Play. The ball makes music.</div>
+</div>
+
+<script>
+// ── Grid config ──
+const COLS = 32, ROWS = 32;
+const CELL = 640 / COLS; // 20px
+const grid = new Array(COLS * ROWS).fill(0); // 0 = empty
+
+// ── Colors & Chords ──
+const PALETTE = [
+  { color: '#FF0000', name: 'Cmaj',  notes: [261.63, 329.63, 392.00] },
+  { color: '#FF8800', name: 'Dm',    notes: [293.66, 349.23, 440.00] },
+  { color: '#FFD700', name: 'Em',    notes: [329.63, 392.00, 493.88] },
+  { color: '#00CC44', name: 'Fmaj',  notes: [349.23, 440.00, 523.25] },
+  { color: '#00DDFF', name: 'Gmaj',  notes: [392.00, 493.88, 587.33] },
+  { color: '#0088FF', name: 'Am',    notes: [440.00, 523.25, 659.25] },
+  { color: '#0000FF', name: 'Bdim',  notes: [493.88, 587.33, 739.99] },
+  { color: '#9900CC', name: 'C5',    notes: [523.25, 659.25, 783.99] },
+  { color: '#FF00CC', name: 'Dm5',   notes: [587.33, 698.46, 880.00] },
+];
+
+// ── Build toolbar ──
+const toolbar = document.getElementById('toolbar');
+let activeColor = 1; // 1-indexed into PALETTE, 0 = eraser
+
+PALETTE.forEach((p, i) => {
+  const sw = document.createElement('div');
+  sw.className = 'color-swatch' + (i === 0 ? ' active' : '');
+  sw.style.background = p.color;
+  const lbl = document.createElement('span');
+  lbl.className = 'chord-label';
+  lbl.textContent = p.name;
+  sw.appendChild(lbl);
+  sw.onclick = () => {
+    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    activeColor = i + 1;
+  };
+  toolbar.appendChild(sw);
+});
+
+// Add separator + eraser
+const sep = document.createElement('div');
+sep.className = 'separator';
+toolbar.appendChild(sep);
+
+const eraser = document.createElement('div');
+eraser.className = 'color-swatch eraser';
+eraser.title = 'Eraser';
+eraser.onclick = () => {
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+  eraser.classList.add('active');
+  activeColor = 0;
+};
+toolbar.appendChild(eraser);
+
+// ── Canvas drawing ──
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+
+function drawGrid() {
+  ctx.clearRect(0, 0, 640, 640);
+
+  // Background
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillRect(0, 0, 640, 640);
+
+  // Grid lines
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * CELL, 0);
+    ctx.lineTo(x * CELL, 640);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * CELL);
+    ctx.lineTo(640, y * CELL);
+    ctx.stroke();
+  }
+
+  // Filled cells
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i] > 0) {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      ctx.fillStyle = PALETTE[grid[i] - 1].color;
+      ctx.fillRect(col * CELL + 0.5, row * CELL + 0.5, CELL - 1, CELL - 1);
+    }
+  }
+
+  // Ball
+  if (playing) {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#111';
+    ctx.fill();
+    // subtle glow
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+// ── Mouse painting ──
+let painting = false;
+
+canvas.addEventListener('mousedown', (e) => {
+  if (playing) return;
+  painting = true;
+  paint(e);
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (painting) paint(e);
+});
+canvas.addEventListener('mouseup', () => painting = false);
+canvas.addEventListener('mouseleave', () => painting = false);
+
+function paint(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = 640 / rect.width;
+  const sy = 640 / rect.height;
+  const x = Math.floor((e.clientX - rect.left) * sx / CELL);
+  const y = Math.floor((e.clientY - rect.top) * sy / CELL);
+  if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return;
+  grid[y * COLS + x] = activeColor;
+  drawGrid();
+}
+
+// ── Audio ──
+let audioCtx = null;
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+const activeChords = new Map(); // colorIndex -> { timeout }
+
+function playChord(colorIndex) {
+  ensureAudio();
+  const p = PALETTE[colorIndex];
+  if (!p) return;
+
+  // Debounce: don't replay same chord if it's still ringing
+  if (activeChords.has(colorIndex)) {
+    clearTimeout(activeChords.get(colorIndex).timeout);
+  }
+
+  const now = audioCtx.currentTime;
+  const duration = 0.6;
+
+  p.notes.forEach((freq, ni) => {
+    // Main oscillator
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+
+    osc.type = ni === 0 ? 'triangle' : 'sine';
+    osc.frequency.value = freq;
+
+    filter.type = 'lowpass';
+    filter.frequency.value = 2000;
+    filter.Q.value = 1;
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(now);
+    osc.stop(now + duration);
+  });
+
+  activeChords.set(colorIndex, {
+    timeout: setTimeout(() => activeChords.delete(colorIndex), duration * 1000)
+  });
+}
+
+// ── Ball physics ──
+let playing = false;
+const ball = { x: 320, y: 320, r: 7, vx: 3.5, vy: 2.8 };
+let animId = null;
+const hitCooldown = new Set();
+
+function resetBall() {
+  ball.x = 320;
+  ball.y = 320;
+  const angle = Math.random() * Math.PI * 2;
+  const speed = 4;
+  ball.vx = Math.cos(angle) * speed;
+  ball.vy = Math.sin(angle) * speed;
+  // Ensure it's not too horizontal/vertical
+  if (Math.abs(ball.vx) < 1.5) ball.vx = 2.5 * Math.sign(ball.vx || 1);
+  if (Math.abs(ball.vy) < 1.5) ball.vy = 2.5 * Math.sign(ball.vy || 1);
+}
+
+function tick() {
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // Wall bounce
+  if (ball.x - ball.r <= 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+  if (ball.x + ball.r >= 640) { ball.x = 640 - ball.r; ball.vx = -Math.abs(ball.vx); }
+  if (ball.y - ball.r <= 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+  if (ball.y + ball.r >= 640) { ball.y = 640 - ball.r; ball.vy = -Math.abs(ball.vy); }
+
+  // Check cell collision at ball edges (4 cardinal points)
+  const checks = [
+    [ball.x, ball.y - ball.r],  // top
+    [ball.x, ball.y + ball.r],  // bottom
+    [ball.x - ball.r, ball.y],  // left
+    [ball.x + ball.r, ball.y],  // right
+  ];
+
+  for (const [cx, cy] of checks) {
+    const col = Math.floor(cx / CELL);
+    const row = Math.floor(cy / CELL);
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) continue;
+    const idx = row * COLS + col;
+    const colorIdx = grid[idx];
+    if (colorIdx > 0) {
+      const key = idx;
+      if (!hitCooldown.has(key)) {
+        playChord(colorIdx - 1);
+        hitCooldown.add(key);
+        setTimeout(() => hitCooldown.delete(key), 200);
+
+        // Bounce: determine which side we hit
+        const cellCx = (col + 0.5) * CELL;
+        const cellCy = (row + 0.5) * CELL;
+        const dx = ball.x - cellCx;
+        const dy = ball.y - cellCy;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+          ball.vx = -ball.vx;
+        } else {
+          ball.vy = -ball.vy;
+        }
+      }
+    }
+  }
+
+  drawGrid();
+  animId = requestAnimationFrame(tick);
+}
+
+// ── Controls ──
+const playBtn = document.getElementById('playBtn');
+const clearBtn = document.getElementById('clearBtn');
+
+playBtn.addEventListener('click', () => {
+  ensureAudio();
+  if (!playing) {
+    playing = true;
+    playBtn.textContent = '⏸ Pause';
+    resetBall();
+    tick();
+  } else {
+    playing = false;
+    playBtn.textContent = '▶ Play';
+    cancelAnimationFrame(animId);
+    drawGrid();
+  }
+});
+
+clearBtn.addEventListener('click', () => {
+  grid.fill(0);
+  drawGrid();
+});
+
+// Initial draw
+drawGrid();
+</script>
+</body>
+</html>
