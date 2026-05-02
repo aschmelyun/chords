@@ -1,6 +1,7 @@
 // ── Grid config ──
 const COLS = 32, ROWS = 32;
-const CELL = 480 / COLS; // 15px
+const CANVAS_SIZE = 480;
+const CELL = CANVAS_SIZE / COLS; // 15px
 const grid = new Array(COLS * ROWS).fill(0); // 0 = empty
 
 // ── Colors & Chords ──
@@ -43,11 +44,11 @@ const canvas = document.getElementById('grid');
 const ctx = canvas.getContext('2d');
 
 function drawGrid() {
-  ctx.clearRect(0, 0, 480, 480);
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
   // Background
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 480, 480);
+  ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
   // Grid lines
   ctx.strokeStyle = '#e0e0e0';
@@ -55,13 +56,13 @@ function drawGrid() {
   for (let x = 0; x <= COLS; x++) {
     ctx.beginPath();
     ctx.moveTo(x * CELL, 0);
-    ctx.lineTo(x * CELL, 480);
+    ctx.lineTo(x * CELL, CANVAS_SIZE);
     ctx.stroke();
   }
   for (let y = 0; y <= ROWS; y++) {
     ctx.beginPath();
     ctx.moveTo(0, y * CELL);
-    ctx.lineTo(480, y * CELL);
+    ctx.lineTo(CANVAS_SIZE, y * CELL);
     ctx.stroke();
   }
 
@@ -84,12 +85,12 @@ function drawGrid() {
   }
 }
 
-// ── Mouse painting ──
+// ── Mouse and Touch painting ──
 let painting = false;
 let lastPaintX = null;
 let lastPaintY = null;
 
-canvas.addEventListener('mousedown', (e) => {
+function startPaint(e) {
   painting = true;
   const coords = getGridCoords(e);
   if (coords) {
@@ -97,8 +98,9 @@ canvas.addEventListener('mousedown', (e) => {
     lastPaintY = coords.y;
     paintCell(coords.x, coords.y);
   }
-});
-canvas.addEventListener('mousemove', (e) => {
+}
+
+function continuePaint(e) {
   if (painting) {
     const coords = getGridCoords(e);
     if (coords) {
@@ -110,22 +112,44 @@ canvas.addEventListener('mousemove', (e) => {
       lastPaintY = coords.y;
     }
   }
-});
-canvas.addEventListener('mouseup', () => {
+}
+
+function endPaint() {
   painting = false;
   lastPaintX = null;
   lastPaintY = null;
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', startPaint);
+canvas.addEventListener('mousemove', continuePaint);
+canvas.addEventListener('mouseup', endPaint);
+canvas.addEventListener('mouseleave', endPaint);
+
+// Touch events
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  startPaint(touch);
 });
-canvas.addEventListener('mouseleave', () => {
-  painting = false;
-  lastPaintX = null;
-  lastPaintY = null;
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  continuePaint(touch);
+});
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  endPaint();
+});
+canvas.addEventListener('touchcancel', (e) => {
+  e.preventDefault();
+  endPaint();
 });
 
 function getGridCoords(e) {
   const rect = canvas.getBoundingClientRect();
-  const sx = 480 / rect.width;
-  const sy = 480 / rect.height;
+  const sx = CANVAS_SIZE / rect.width;
+  const sy = CANVAS_SIZE / rect.height;
   const x = Math.floor((e.clientX - rect.left) * sx / CELL);
   const y = Math.floor((e.clientY - rect.top) * sy / CELL);
   if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return null;
@@ -216,13 +240,13 @@ function playChord(colorIndex) {
 
 // ── Ball physics ──
 let playing = false;
-const ball = { x: 240, y: 240, r: 7, vx: 3.5, vy: 2.8 };
+const ball = { x: CANVAS_SIZE / 2, y: CANVAS_SIZE / 2, r: 7, vx: 3.5, vy: 2.8 };
 let animId = null;
 const hitCooldown = new Set();
 
 function resetBall() {
-  ball.x = 240;
-  ball.y = 240;
+  ball.x = CANVAS_SIZE / 2;
+  ball.y = CANVAS_SIZE / 2;
   const angle = Math.random() * Math.PI * 2;
   const speed = 4;
   ball.vx = Math.cos(angle) * speed;
@@ -238,9 +262,9 @@ function tick() {
 
   // Wall bounce
   if (ball.x - ball.r <= 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
-  if (ball.x + ball.r >= 480) { ball.x = 480 - ball.r; ball.vx = -Math.abs(ball.vx); }
+  if (ball.x + ball.r >= CANVAS_SIZE) { ball.x = CANVAS_SIZE - ball.r; ball.vx = -Math.abs(ball.vx); }
   if (ball.y - ball.r <= 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
-  if (ball.y + ball.r >= 480) { ball.y = 480 - ball.r; ball.vy = -Math.abs(ball.vy); }
+  if (ball.y + ball.r >= CANVAS_SIZE) { ball.y = CANVAS_SIZE - ball.r; ball.vy = -Math.abs(ball.vy); }
 
   // Check cell collision at ball edges (4 cardinal points)
   const checks = [
