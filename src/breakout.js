@@ -19,7 +19,12 @@ const PALETTE = [
 
 // ── Build toolbar ──
 const toolbar = document.getElementById('toolbar');
+const toolName = document.getElementById('toolName');
 let activeColor = 1; // 1-indexed into PALETTE, 0 = eraser
+
+function updateToolName(name) {
+  toolName.textContent = name;
+}
 
 PALETTE.forEach((p, i) => {
   const sw = document.createElement('div');
@@ -33,11 +38,22 @@ PALETTE.forEach((p, i) => {
     document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
     sw.classList.add('active');
     activeColor = i + 1;
+    updateToolName(p.name);
   };
   toolbar.appendChild(sw);
 });
 
-// Separator and eraser removed for simpler UI
+// Add eraser
+const eraser = document.createElement('div');
+eraser.className = 'color-swatch eraser';
+eraser.title = 'Eraser';
+eraser.onclick = () => {
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+  eraser.classList.add('active');
+  activeColor = 0;
+  updateToolName('Eraser');
+};
+toolbar.appendChild(eraser);
 
 // ── Canvas drawing ──
 const canvas = document.getElementById('grid');
